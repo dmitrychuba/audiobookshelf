@@ -65,6 +65,9 @@ class ApiRouter {
     //
     // Library Routes
     //
+    // Generated folder artwork is already content-addressed on disk and must
+    // bypass the JSON response cache used by the remaining library endpoints.
+    this.router.get('/libraries/:id/folder-cover', LibraryController.middleware.bind(this), LibraryController.getFolderCover.bind(this))
     this.router.get(/^\/libraries/, this.apiCacheManager.middleware)
     this.router.post('/libraries', LibraryController.create.bind(this))
     this.router.get('/libraries', LibraryController.findAll.bind(this))

@@ -19,11 +19,13 @@ const Scanner = require('../scanner/Scanner')
 const Database = require('../Database')
 const Watcher = require('../Watcher')
 const RssFeedManager = require('../managers/RssFeedManager')
+const FolderCoverService = require('../services/FolderCoverService')
 
 const libraryFilters = require('../utils/queries/libraryFilters')
 const libraryItemsPodcastFilters = require('../utils/queries/libraryItemsPodcastFilters')
 const authorFilters = require('../utils/queries/authorFilters')
 const zipHelpers = require('../utils/zipHelpers')
+const { reqSupportsWebp } = require('../utils/index')
 
 /**
  * @typedef RequestUserObject
@@ -36,6 +38,19 @@ const zipHelpers = require('../utils/zipHelpers')
  *
  * @typedef {RequestWithUser & RequestEntityObject} LibraryControllerRequest
  */
+
+function normalizeLibraryItemRelPath(libraryItem) {
+  return (libraryItem.relPath || Path.basename(libraryItem.path || '')).replaceAll('\\', '/').replace(/^\/+|\/+$/g, '')
+}
+
+function normalizeRequestedFolderPath(folderPath) {
+  if (folderPath === undefined || folderPath === '') return ''
+  if (typeof folderPath !== 'string' || folderPath.startsWith('/') || folderPath.includes('\\') || folderPath.includes('\0')) return null
+
+  const segments = folderPath.split('/')
+  if (segments.some((segment) => !segment || segment === '.' || segment === '..')) return null
+  return segments.join('/')
+}
 
 class LibraryController {
   constructor() {}
@@ -670,7 +685,7 @@ class LibraryController {
       .filter((libraryItem) => !libraryItem.isMissing && !libraryItem.isInvalid && libraryItem.media && req.user.checkCanAccessLibraryItem(libraryItem))
       .map((libraryItem) => {
         // relPath is normally POSIX already. Normalize old Windows records too.
-        const relPath = (libraryItem.relPath || Path.basename(libraryItem.path || '')).replaceAll('\\', '/').replace(/^\/+|\/+$/g, '')
+        const relPath = normalizeLibraryItemRelPath(libraryItem)
         return {
           id: libraryItem.id,
           folderId: libraryItem.libraryFolderId,
@@ -692,6 +707,81 @@ class LibraryController {
       })),
       items
     })
+  }
+
+  /**
+   * GET: /api/libraries/:id/folder-cover
+   *
+   * Lazily generates a deterministic square collage from the real covers of
+   * accessible items inside one indexed library directory.
+   *
+   * @param {LibraryControllerRequest} req
+   * @param {Response} res
+   */
+  async getFolderCover(req, res) {
+    const rootId = typeof req.query.rootId === 'string' ? req.query.rootId : ''
+    const folderPath = normalizeRequestedFolderPath(req.query.path)
+    if (!rootId || folderPath === null) return res.sendStatus(400)
+
+    const libraryFolder = req.library.libraryFolders.find((folder) => folder.id === rootId)
+    if (!libraryFolder) return res.sendStatus(404)
+
+    const libraryItems = await Database.libraryItemModel.findAll({
+      where: {
+        libraryId: req.library.id,
+        libraryFolderId: rootId
+      },
+      attributes: ['id', 'libraryId', 'libraryFolderId', 'relPath', 'path', 'mediaId', 'mediaType', 'isMissing', 'isInvalid', 'updatedAt', 'authorNamesFirstLast'],
+      include: [
+        {
+          model: Database.bookModel,
+          attributes: ['title', 'tags', 'explicit', 'coverPath']
+        },
+        {
+          model: Database.podcastModel,
+          attributes: ['title', 'author', 'tags', 'explicit', 'coverPath']
+        }
+      ]
+    })
+
+    const pathPrefix = folderPath ? `${folderPath}/` : ''
+    const items = libraryItems
+      .filter((libraryItem) => {
+        if (libraryItem.isMissing || libraryItem.isInvalid || !libraryItem.media || !req.user.checkCanAccessLibraryItem(libraryItem)) return false
+        if (!folderPath) return true
+        const relPath = normalizeLibraryItemRelPath(libraryItem)
+        return relPath === folderPath || relPath.startsWith(pathPrefix)
+      })
+      .map((libraryItem) => ({
+        id: libraryItem.id,
+        updatedAt: libraryItem.updatedAt?.valueOf(),
+        coverPath: libraryItem.media.coverPath,
+        author: libraryItem.mediaType === 'book' ? libraryItem.authorNamesFirstLast || '' : libraryItem.media.author || ''
+      }))
+
+    if (!items.length) return res.sendStatus(404)
+
+    const format = req.query.format === 'png' || req.query.format === 'jpeg' ? req.query.format : reqSupportsWebp(req) ? 'webp' : 'jpeg'
+    const folderIdentity = `${req.library.id}:${rootId}:${folderPath}`
+
+    try {
+      const folderCover = await FolderCoverService.getOrCreateFolderCover({
+        folderIdentity,
+        items,
+        size: req.query.width,
+        format
+      })
+      const etag = `"${folderCover.cacheKey}"`
+
+      res.type(`image/${folderCover.format}`)
+      res.set('ETag', etag)
+      res.set('Cache-Control', req.query.v ? 'private, max-age=31536000, immutable' : 'private, no-cache')
+      if (req.headers['if-none-match'] === etag) return res.sendStatus(304)
+      return res.sendFile(folderCover.cachePath)
+    } catch (error) {
+      Logger.error(`[LibraryController] Failed to generate folder cover for "${folderIdentity}"`, error)
+      return res.sendStatus(500)
+    }
   }
 
   /**

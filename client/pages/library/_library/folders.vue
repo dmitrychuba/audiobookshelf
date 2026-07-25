@@ -62,7 +62,8 @@ export default {
       roots: [],
       items: [],
       currentRootId: null,
-      currentPath: []
+      currentPath: [],
+      refreshTimeout: null
     }
   },
   computed: {
@@ -141,7 +142,7 @@ export default {
   },
   watch: {
     currentLibraryId(newValue, oldValue) {
-      if (newValue && newValue !== oldValue) this.init()
+      if (newValue && newValue !== oldValue) this.init(true)
     }
   },
   methods: {
@@ -165,9 +166,29 @@ export default {
       this.currentRootId = folder.rootId
       this.currentPath = [...folder.path]
     },
-    async init() {
+    scheduleRefresh() {
+      clearTimeout(this.refreshTimeout)
+      this.refreshTimeout = setTimeout(() => this.init(false), 350)
+    },
+    initSocketListeners() {
+      if (!this.$root.socket) return
+      this.$root.socket.on('item_updated', this.scheduleRefresh)
+      this.$root.socket.on('item_added', this.scheduleRefresh)
+      this.$root.socket.on('item_removed', this.scheduleRefresh)
+      this.$root.socket.on('items_updated', this.scheduleRefresh)
+      this.$root.socket.on('items_added', this.scheduleRefresh)
+    },
+    removeSocketListeners() {
+      if (!this.$root.socket) return
+      this.$root.socket.off('item_updated', this.scheduleRefresh)
+      this.$root.socket.off('item_added', this.scheduleRefresh)
+      this.$root.socket.off('item_removed', this.scheduleRefresh)
+      this.$root.socket.off('items_updated', this.scheduleRefresh)
+      this.$root.socket.off('items_added', this.scheduleRefresh)
+    },
+    async init(resetNavigation = true) {
       this.loading = true
-      this.openRoot()
+      if (resetNavigation) this.openRoot()
       const payload = await this.$axios.$get(`/api/libraries/${this.currentLibraryId}/folders`).catch((error) => {
         console.error('Failed to load library folders', error)
         this.$toast.error(this.$strings.ToastFailedToLoadData)
@@ -179,7 +200,12 @@ export default {
     }
   },
   mounted() {
-    this.init()
+    this.init(true)
+    this.initSocketListeners()
+  },
+  beforeDestroy() {
+    clearTimeout(this.refreshTimeout)
+    this.removeSocketListeners()
   }
 }
 </script>

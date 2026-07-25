@@ -1,7 +1,8 @@
 <template>
   <button type="button" class="block text-left group" :style="{ width: cardSize + 'px' }" :aria-label="`${folder.name}, ${numBooks} ${$strings.LabelBooks}`" @click="$emit('click', folder)">
     <div class="relative rounded-sm overflow-hidden bg-primary box-shadow-book" :style="{ width: cardSize + 'px', height: cardSize + 'px' }">
-      <covers-group-cover :id="folder.key" :name="folder.name" :book-items="coverItems" :width="cardSize" :height="cardSize" :book-cover-aspect-ratio="bookCoverAspectRatio" />
+      <img v-if="!generatedCoverFailed" :src="folderCoverSrc" alt="" aria-hidden="true" loading="lazy" draggable="false" class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300" :class="generatedCoverReady ? 'opacity-100' : 'opacity-0'" @load="generatedCoverReady = true" @error="generatedCoverFailed = true" />
+      <covers-group-cover v-else :id="folder.key" :name="folder.name" :book-items="coverItems" :width="cardSize" :height="cardSize" :book-cover-aspect-ratio="bookCoverAspectRatio" />
 
       <div class="absolute inset-0 z-20 folder-cover-overlay opacity-40 group-hover:opacity-100 transition-opacity">
         <div class="absolute inset-0 bg-black/20 group-hover:bg-black/45 transition-colors" />
@@ -30,7 +31,19 @@ export default {
       default: 192
     }
   },
+  data() {
+    return {
+      generatedCoverFailed: false,
+      generatedCoverReady: false
+    }
+  },
   computed: {
+    currentLibraryId() {
+      return this.$store.state.libraries.currentLibraryId
+    },
+    routerBasePath() {
+      return this.$store.state.routerBasePath
+    },
     sizeMultiplier() {
       return this.$store.getters['user/getSizeMultiplier']
     },
@@ -43,6 +56,24 @@ export default {
     numBooks() {
       return this.folder.items?.length || 0
     },
+    folderCoverVersion() {
+      const manifest = (this.folder.items || [])
+        .map((item) => `${item.id}:${item.updatedAt || 0}:${item.hasCover ? 1 : 0}`)
+        .sort()
+        .join('|')
+
+      // FNV-1a gives the image URL a compact, deterministic browser cache key.
+      let hash = 0x811c9dc5
+      for (let index = 0; index < manifest.length; index++) {
+        hash ^= manifest.charCodeAt(index)
+        hash = Math.imul(hash, 0x01000193)
+      }
+      return (hash >>> 0).toString(16)
+    },
+    folderCoverSrc() {
+      const query = [`rootId=${encodeURIComponent(this.folder.rootId)}`, `path=${encodeURIComponent((this.folder.path || []).join('/'))}`, `width=${Math.min(1024, Math.round(this.cardSize * 2))}`, `v=${this.folderCoverVersion}`].join('&')
+      return `${this.routerBasePath}/api/libraries/${this.currentLibraryId}/folder-cover?${query}`
+    },
     coverItems() {
       return (this.folder.items || [])
         .filter((item) => item.hasCover)
@@ -54,6 +85,12 @@ export default {
             coverPath: 'indexed'
           }
         }))
+    }
+  },
+  watch: {
+    folderCoverSrc() {
+      this.generatedCoverFailed = false
+      this.generatedCoverReady = false
     }
   }
 }

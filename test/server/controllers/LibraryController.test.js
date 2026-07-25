@@ -6,6 +6,7 @@ const Database = require('../../../server/Database')
 const LibraryController = require('../../../server/controllers/LibraryController')
 const zipHelpers = require('../../../server/utils/zipHelpers')
 const Logger = require('../../../server/Logger')
+const FolderCoverService = require('../../../server/services/FolderCoverService')
 
 describe('LibraryController.downloadMultiple', () => {
   let library
@@ -113,6 +114,11 @@ describe('LibraryController.downloadMultiple', () => {
     sinon.stub(Logger, 'warn')
     sinon.stub(Logger, 'error')
     sinon.stub(zipHelpers, 'zipDirectoriesPipe').resolves()
+    sinon.stub(FolderCoverService, 'getOrCreateFolderCover').resolves({
+      cacheKey: 'folder-cover-key',
+      cachePath: '/tmp/folder-cover.webp',
+      format: 'webp'
+    })
   })
 
   afterEach(async () => {
@@ -205,5 +211,57 @@ describe('LibraryController.downloadMultiple', () => {
         mediaType: 'book'
       }
     ])
+  })
+
+  it('generates folder artwork using accessible items only', async () => {
+    const req = {
+      query: {
+        rootId: libraryFolder.id,
+        path: 'Authors',
+        width: '384',
+        v: 'browser-cache-key'
+      },
+      headers: {
+        accept: 'image/webp'
+      },
+      user: restrictedUser,
+      library: libraryRecord
+    }
+    const res = {
+      type: sinon.stub().returnsThis(),
+      set: sinon.stub().returnsThis(),
+      sendFile: sinon.spy(),
+      sendStatus: sinon.spy()
+    }
+
+    await LibraryController.getFolderCover(req, res)
+
+    expect(FolderCoverService.getOrCreateFolderCover.calledOnce).to.be.true
+    const renderRequest = FolderCoverService.getOrCreateFolderCover.firstCall.args[0]
+    expect(renderRequest.folderIdentity).to.equal(`${library.id}:${libraryFolder.id}:Authors`)
+    expect(renderRequest.items.map((item) => item.id)).to.deep.equal([allowedItemId])
+    expect(renderRequest.size).to.equal('384')
+    expect(renderRequest.format).to.equal('webp')
+    expect(res.set.calledWith('Cache-Control', 'private, max-age=31536000, immutable')).to.be.true
+    expect(res.sendFile.calledWith('/tmp/folder-cover.webp')).to.be.true
+  })
+
+  it('rejects folder artwork paths that could escape a library root', async () => {
+    const req = {
+      query: {
+        rootId: libraryFolder.id,
+        path: '../Restricted'
+      },
+      user: restrictedUser,
+      library: libraryRecord
+    }
+    const res = {
+      sendStatus: sinon.spy()
+    }
+
+    await LibraryController.getFolderCover(req, res)
+
+    expect(res.sendStatus.calledWith(400)).to.be.true
+    expect(FolderCoverService.getOrCreateFolderCover.called).to.be.false
   })
 })
