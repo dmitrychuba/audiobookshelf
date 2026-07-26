@@ -44,9 +44,6 @@ export default {
     currentLibraryId() {
       return this.$store.state.libraries.currentLibraryId
     },
-    routerBasePath() {
-      return this.$store.state.routerBasePath
-    },
     sizeMultiplier() {
       return this.$store.getters['user/getSizeMultiplier']
     },
@@ -75,7 +72,9 @@ export default {
     },
     folderCoverUrl() {
       const query = [`rootId=${encodeURIComponent(this.folder.rootId)}`, `path=${encodeURIComponent((this.folder.path || []).join('/'))}`, `width=${Math.min(1024, Math.round(this.cardSize * 2))}`, `v=${this.folderCoverVersion}`].join('&')
-      return `${this.routerBasePath}/api/libraries/${this.currentLibraryId}/folder-cover?${query}`
+      // Axios already uses routerBasePath as its base URL. Keeping this
+      // relative avoids duplicating the subpath in reverse-proxy installs.
+      return `/api/libraries/${this.currentLibraryId}/folder-cover?${query}`
     },
     coverItems() {
       return (this.folder.items || [])
