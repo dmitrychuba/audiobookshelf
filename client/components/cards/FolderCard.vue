@@ -8,7 +8,7 @@
         <div class="absolute inset-0 bg-black/20 group-hover:bg-black/45 transition-colors" />
       </div>
 
-      <div class="absolute z-30 bottom-2 left-2 w-10 h-10 rounded-md flex items-center justify-center box-shadow-md" style="background-color: #232323; border: 1px solid #facc15">
+      <div class="absolute z-30 bottom-2 left-2 w-10 h-10 rounded-md flex items-center justify-center box-shadow-md" style="background-color: #232323">
         <span class="material-symbols fill text-3xl text-yellow-300">folder</span>
       </div>
 

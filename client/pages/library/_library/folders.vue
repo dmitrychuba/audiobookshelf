@@ -63,7 +63,7 @@ export default {
       items: [],
       currentRootId: null,
       currentPath: [],
-      tileBaseSize: 224,
+      viewportWidth: 0,
       refreshTimeout: null
     }
   },
@@ -77,8 +77,18 @@ export default {
     sizeMultiplier() {
       return this.$store.getters['user/getSizeMultiplier']
     },
+    isMobilePortrait() {
+      return this.$store.state.globals.isMobilePortrait
+    },
     tileSize() {
-      return Math.round(this.tileBaseSize * this.sizeMultiplier)
+      if (this.isMobilePortrait) {
+        const availableWidth = Math.max(0, (this.viewportWidth || 368) - 48)
+        return Math.min(176, Math.floor(availableWidth / 2))
+      }
+      return Math.round(224 * this.sizeMultiplier)
+    },
+    tileBaseSize() {
+      return this.tileSize / this.sizeMultiplier
     },
     currentRoot() {
       return this.roots.find((root) => root.id === this.currentRootId) || null
@@ -147,6 +157,9 @@ export default {
     }
   },
   methods: {
+    syncViewportWidth() {
+      this.viewportWidth = window.innerWidth
+    },
     sortByName(a, b) {
       return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
     },
@@ -201,10 +214,13 @@ export default {
     }
   },
   mounted() {
+    this.syncViewportWidth()
+    window.addEventListener('resize', this.syncViewportWidth)
     this.init(true)
     this.initSocketListeners()
   },
   beforeDestroy() {
+    window.removeEventListener('resize', this.syncViewportWidth)
     clearTimeout(this.refreshTimeout)
     this.removeSocketListeners()
   }
