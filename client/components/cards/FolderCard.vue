@@ -1,8 +1,8 @@
 <template>
   <button type="button" class="block text-left group" :style="{ width: cardSize + 'px' }" :aria-label="`${folder.name}, ${numBooks} ${$strings.LabelBooks}`" @click="$emit('click', folder)">
     <div class="relative rounded-sm overflow-hidden bg-primary box-shadow-book" :style="{ width: cardSize + 'px', height: cardSize + 'px' }">
-      <img v-if="!generatedCoverFailed" :src="folderCoverSrc" alt="" aria-hidden="true" loading="lazy" draggable="false" class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300" :class="generatedCoverReady ? 'opacity-100' : 'opacity-0'" @load="generatedCoverReady = true" @error="generatedCoverFailed = true" />
-      <covers-group-cover v-else :id="folder.key" :name="folder.name" :book-items="coverItems" :width="cardSize" :height="cardSize" :book-cover-aspect-ratio="bookCoverAspectRatio" />
+      <covers-group-cover :id="folder.key" :name="folder.name" :book-items="coverItems" :width="cardSize" :height="cardSize" :book-cover-aspect-ratio="bookCoverAspectRatio" />
+      <img v-if="generatedCoverSrc && !generatedCoverFailed" :src="generatedCoverSrc" alt="" aria-hidden="true" draggable="false" class="absolute z-10 inset-0 w-full h-full object-cover transition-opacity duration-300" :class="generatedCoverReady ? 'opacity-100' : 'opacity-0'" @load="generatedCoverReady = true" @error="generatedCoverFailed = true" />
 
       <div class="absolute inset-0 z-20 folder-cover-overlay opacity-40 group-hover:opacity-100 transition-opacity">
         <div class="absolute inset-0 bg-black/20 group-hover:bg-black/45 transition-colors" />
@@ -34,7 +34,10 @@ export default {
   data() {
     return {
       generatedCoverFailed: false,
-      generatedCoverReady: false
+      generatedCoverReady: false,
+      generatedCoverSrc: '',
+      generatedCoverObjectUrl: '',
+      generatedCoverRequest: 0
     }
   },
   computed: {
@@ -70,7 +73,7 @@ export default {
       }
       return (hash >>> 0).toString(16)
     },
-    folderCoverSrc() {
+    folderCoverUrl() {
       const query = [`rootId=${encodeURIComponent(this.folder.rootId)}`, `path=${encodeURIComponent((this.folder.path || []).join('/'))}`, `width=${Math.min(1024, Math.round(this.cardSize * 2))}`, `v=${this.folderCoverVersion}`].join('&')
       return `${this.routerBasePath}/api/libraries/${this.currentLibraryId}/folder-cover?${query}`
     },
@@ -88,10 +91,40 @@ export default {
     }
   },
   watch: {
-    folderCoverSrc() {
+    folderCoverUrl: {
+      immediate: true,
+      handler() {
+        this.loadGeneratedCover()
+      }
+    }
+  },
+  methods: {
+    releaseGeneratedCover() {
+      if (this.generatedCoverObjectUrl) URL.revokeObjectURL(this.generatedCoverObjectUrl)
+      this.generatedCoverObjectUrl = ''
+      this.generatedCoverSrc = ''
+    },
+    async loadGeneratedCover() {
+      const request = ++this.generatedCoverRequest
       this.generatedCoverFailed = false
       this.generatedCoverReady = false
+      this.releaseGeneratedCover()
+
+      try {
+        // Folder artwork is permission-aware, so fetch it through the
+        // authenticated Axios client before handing the blob to the image tag.
+        const response = await this.$axios.get(this.folderCoverUrl, { responseType: 'blob' })
+        if (request !== this.generatedCoverRequest) return
+        this.generatedCoverObjectUrl = URL.createObjectURL(response.data)
+        this.generatedCoverSrc = this.generatedCoverObjectUrl
+      } catch (error) {
+        if (request === this.generatedCoverRequest) this.generatedCoverFailed = true
+      }
     }
+  },
+  beforeDestroy() {
+    this.generatedCoverRequest++
+    this.releaseGeneratedCover()
   }
 }
 </script>
