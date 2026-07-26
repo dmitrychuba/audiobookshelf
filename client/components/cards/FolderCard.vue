@@ -6,7 +6,10 @@
 
       <div class="absolute inset-0 z-20 folder-cover-overlay opacity-40 group-hover:opacity-100 transition-opacity">
         <div class="absolute inset-0 bg-black/20 group-hover:bg-black/45 transition-colors" />
-        <span class="material-symbols fill absolute bottom-3 left-3 text-4xl text-yellow-200 drop-shadow-md">folder</span>
+      </div>
+
+      <div class="absolute z-30 bottom-2 left-2 w-10 h-10 rounded-md flex items-center justify-center box-shadow-md" style="background-color: #232323; border: 1px solid #facc15">
+        <span class="material-symbols fill text-3xl text-yellow-300">folder</span>
       </div>
 
       <div class="absolute z-30 top-2 right-2 rounded-full min-w-7 h-7 px-2 font-semibold text-white flex items-center justify-center box-shadow-md" style="background-color: #cd9d49dd">

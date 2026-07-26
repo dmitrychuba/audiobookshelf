@@ -27,9 +27,9 @@
 
     <div id="bookshelf" class="w-full h-full px-4 py-6 md:p-8 relative overflow-y-auto">
       <div v-if="!loading && (visibleFolders.length || visibleItems.length)" class="folder-grid" :style="{ gridTemplateColumns: `repeat(auto-fill, ${tileSize}px)` }">
-        <cards-folder-card v-for="folder in visibleFolders" :key="folder.key" :folder="folder" @click="openFolder" />
+        <cards-folder-card v-for="folder in visibleFolders" :key="folder.key" :folder="folder" :size="tileBaseSize" @click="openFolder" />
 
-        <cards-folder-book-card v-for="item in visibleItems" :key="item.id" :item="item" />
+        <cards-folder-book-card v-for="item in visibleItems" :key="item.id" :item="item" :height="tileBaseSize" />
       </div>
 
       <div v-if="!loading && !visibleFolders.length && !visibleItems.length" class="w-full h-full flex flex-col items-center justify-center text-white/50">
@@ -63,6 +63,7 @@ export default {
       items: [],
       currentRootId: null,
       currentPath: [],
+      tileBaseSize: 224,
       refreshTimeout: null
     }
   },
@@ -77,7 +78,7 @@ export default {
       return this.$store.getters['user/getSizeMultiplier']
     },
     tileSize() {
-      return Math.round(192 * this.sizeMultiplier)
+      return Math.round(this.tileBaseSize * this.sizeMultiplier)
     },
     currentRoot() {
       return this.roots.find((root) => root.id === this.currentRootId) || null
