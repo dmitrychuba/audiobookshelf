@@ -96,6 +96,32 @@ describe('FolderCoverService', () => {
     }
   })
 
+  it('keeps landscape covers inside the collage canvas', async () => {
+    const landscapeCoverPath = Path.join(temporaryDirectory, 'landscape-cover.png')
+    await sharp({
+      create: {
+        width: 1600,
+        height: 600,
+        channels: 3,
+        background: '#365f8d'
+      }
+    })
+      .png()
+      .toFile(landscapeCoverPath)
+
+    const output = await FolderCoverService.renderFolderCover({
+      folderIdentity: 'library:root:landscape',
+      coverItems: [{ id: 'landscape', updatedAt: 1000, coverPath: landscapeCoverPath, author: 'Author' }, ...createItems(4)],
+      size: 384,
+      format: 'jpeg'
+    })
+    const metadata = await sharp(output).metadata()
+
+    expect(metadata.width).to.equal(384)
+    expect(metadata.height).to.equal(384)
+    expect(metadata.format).to.equal('jpeg')
+  })
+
   it('writes one reusable content-addressed cache artifact', async () => {
     const input = {
       folderIdentity: 'library:root:Fiction',

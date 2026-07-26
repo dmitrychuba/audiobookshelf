@@ -191,7 +191,13 @@ async function createBackground(coverPath, folderIdentity, size) {
 }
 
 async function createCoverLayer(coverPath, targetHeight, angle, size) {
-  const resized = await sharp(coverPath).rotate().resize({ height: targetHeight, fit: 'inside', withoutEnlargement: false }).png().toBuffer({ resolveWithObject: true })
+  // Landscape and unusually wide artwork must stay inside the square even
+  // after rotation adds to the layer's bounding box.
+  const resized = await sharp(coverPath)
+    .rotate()
+    .resize({ width: Math.round(size * 0.68), height: targetHeight, fit: 'inside', withoutEnlargement: false })
+    .png()
+    .toBuffer({ resolveWithObject: true })
 
   const radius = Math.max(5, Math.round(size * 0.012))
   const mask = Buffer.from(`
