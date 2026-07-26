@@ -2,7 +2,7 @@
   <button type="button" class="block text-left group" :style="{ width: cardSize + 'px' }" :aria-label="`${folder.name}, ${numBooks} ${$strings.LabelBooks}`" @click="$emit('click', folder)">
     <div class="relative rounded-sm overflow-hidden bg-primary box-shadow-book" :style="{ width: cardSize + 'px', height: cardSize + 'px' }">
       <covers-group-cover :id="folder.key" :name="folder.name" :book-items="coverItems" :width="cardSize" :height="cardSize" :book-cover-aspect-ratio="bookCoverAspectRatio" />
-      <img v-if="generatedCoverSrc && !generatedCoverFailed" :src="generatedCoverSrc" alt="" aria-hidden="true" draggable="false" class="absolute z-10 inset-0 w-full h-full object-cover transition-opacity duration-300" :class="generatedCoverReady ? 'opacity-100' : 'opacity-0'" @load="generatedCoverReady = true" @error="generatedCoverFailed = true" />
+      <img v-if="generatedCoverSrc && !generatedCoverFailed" :src="generatedCoverSrc" alt="" aria-hidden="true" draggable="false" class="absolute z-10 inset-0 w-full h-full object-cover opacity-100" @error="generatedCoverFailed = true" />
 
       <div class="absolute inset-0 z-20 folder-cover-overlay opacity-40 group-hover:opacity-100 transition-opacity">
         <div class="absolute inset-0 bg-black/20 group-hover:bg-black/45 transition-colors" />
@@ -23,6 +23,8 @@
 </template>
 
 <script>
+import { cacheFolderCover, getCachedFolderCover } from '@/utils/folderCoverCache'
+
 export default {
   props: {
     folder: {
@@ -37,7 +39,6 @@ export default {
   data() {
     return {
       generatedCoverFailed: false,
-      generatedCoverReady: false,
       generatedCoverSrc: '',
       generatedCoverObjectUrl: '',
       generatedCoverRequest: 0
@@ -79,6 +80,10 @@ export default {
       // relative avoids duplicating the subpath in reverse-proxy installs.
       return `/api/libraries/${this.currentLibraryId}/folder-cover?${query}`
     },
+    folderCoverCacheKey() {
+      const userId = this.$store.state.user.user?.id || 'anonymous'
+      return `${userId}:${this.currentLibraryId}:${this.folderCoverUrl}`
+    },
     coverItems() {
       return (this.folder.items || [])
         .filter((item) => item.hasCover)
@@ -106,19 +111,48 @@ export default {
       this.generatedCoverObjectUrl = ''
       this.generatedCoverSrc = ''
     },
+    preloadGeneratedCover(blob, request) {
+      return new Promise((resolve, reject) => {
+        const objectUrl = URL.createObjectURL(blob)
+        const image = new Image()
+
+        image.onload = () => {
+          if (request !== this.generatedCoverRequest) {
+            URL.revokeObjectURL(objectUrl)
+            return resolve(false)
+          }
+          this.generatedCoverObjectUrl = objectUrl
+          this.generatedCoverSrc = objectUrl
+          resolve(true)
+        }
+        image.onerror = () => {
+          URL.revokeObjectURL(objectUrl)
+          reject(new Error('Generated folder cover could not be decoded'))
+        }
+        image.src = objectUrl
+      })
+    },
     async loadGeneratedCover() {
       const request = ++this.generatedCoverRequest
       this.generatedCoverFailed = false
-      this.generatedCoverReady = false
       this.releaseGeneratedCover()
 
       try {
+        const cachedCover = await getCachedFolderCover(this.folderCoverCacheKey)
+        if (request !== this.generatedCoverRequest) return
+        if (cachedCover) {
+          await this.preloadGeneratedCover(cachedCover, request)
+          return
+        }
+
         // Folder artwork is permission-aware, so fetch it through the
-        // authenticated Axios client before handing the blob to the image tag.
+        // authenticated Axios client on the first request. Cache Storage keeps
+        // the versioned blob available across reloads without exposing a token
+        // in the image URL.
         const response = await this.$axios.get(this.folderCoverUrl, { responseType: 'blob' })
         if (request !== this.generatedCoverRequest) return
-        this.generatedCoverObjectUrl = URL.createObjectURL(response.data)
-        this.generatedCoverSrc = this.generatedCoverObjectUrl
+        cacheFolderCover(this.folderCoverCacheKey, response.data)
+        await this.preloadGeneratedCover(response.data, request)
       } catch (error) {
         if (request === this.generatedCoverRequest) this.generatedCoverFailed = true
       }
