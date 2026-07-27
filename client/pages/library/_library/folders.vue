@@ -169,16 +169,40 @@ export default {
     pathStartsWith(path, parent) {
       return parent.every((segment, index) => path[index] === segment)
     },
+    restoreNavigationFromRoute() {
+      const root = this.$route.query.root
+      const path = this.$route.query.path
+      this.currentRootId = typeof root === 'string' && root ? root : null
+      this.currentPath = this.currentRootId && typeof path === 'string' ? path.split('/').filter(Boolean) : []
+    },
+    syncNavigationToRoute() {
+      const query = { ...this.$route.query }
+      delete query.root
+      delete query.path
+
+      if (this.currentRootId) query.root = this.currentRootId
+      if (this.currentPath.length) query.path = this.currentPath.join('/')
+
+      const currentQuery = this.$route.query
+      if (currentQuery.root === query.root && currentQuery.path === query.path) return
+
+      this.$router.replace({ path: this.$route.path, query }).catch((error) => {
+        if (error?.name !== 'NavigationDuplicated') console.error('Failed to update folder route', error)
+      })
+    },
     openRoot() {
       this.currentRootId = null
       this.currentPath = []
+      this.syncNavigationToRoute()
     },
     openPath(length) {
       this.currentPath = this.currentPath.slice(0, length)
+      this.syncNavigationToRoute()
     },
     openFolder(folder) {
       this.currentRootId = folder.rootId
       this.currentPath = [...folder.path]
+      this.syncNavigationToRoute()
     },
     scheduleRefresh() {
       clearTimeout(this.refreshTimeout)
@@ -202,7 +226,7 @@ export default {
     },
     async init(resetNavigation = true) {
       this.loading = true
-      if (resetNavigation) this.openRoot()
+      if (resetNavigation) this.restoreNavigationFromRoute()
       const payload = await this.$axios.$get(`/api/libraries/${this.currentLibraryId}/folders`).catch((error) => {
         console.error('Failed to load library folders', error)
         this.$toast.error(this.$strings.ToastFailedToLoadData)
@@ -210,6 +234,16 @@ export default {
       })
       this.roots = payload.folders || []
       this.items = payload.items || []
+
+      if (this.currentRootId && !this.currentRoot) {
+        this.currentRootId = null
+        this.currentPath = []
+      } else if (this.currentRoot) {
+        while (this.currentPath.length && !this.itemsInRoot.some((item) => this.pathStartsWith(this.pathSegments(item.relPath), this.currentPath))) {
+          this.currentPath.pop()
+        }
+      }
+      this.syncNavigationToRoute()
       this.loading = false
     }
   },

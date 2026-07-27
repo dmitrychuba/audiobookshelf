@@ -1,6 +1,13 @@
 <template>
   <div id="page-wrapper" class="bg-bg page overflow-hidden" :class="streamLibraryItem ? 'streaming' : ''">
     <div id="item-page-wrapper" class="w-full h-full overflow-y-auto px-2 py-6 lg:p-8">
+      <div class="max-w-6xl mx-auto mb-4">
+        <button type="button" class="inline-flex items-center py-1.5 pr-3 text-gray-300 hover:text-white transition-colors" :aria-label="$strings.ButtonBack" @click="goBack">
+          <span class="material-symbols text-2xl mr-1" aria-hidden="true">arrow_back</span>
+          <span>{{ $strings.ButtonBack }}</span>
+        </button>
+      </div>
+
       <div class="flex flex-col lg:flex-row max-w-6xl mx-auto">
         <div class="w-full flex justify-center lg:block lg:w-52" style="min-width: 208px">
           <div class="relative group" style="height: fit-content">
@@ -148,6 +155,12 @@
 
 <script>
 export default {
+  beforeRouteEnter(to, from, next) {
+    const returnRoute = from?.name && !from.path.startsWith('/item/') ? from.fullPath : null
+    next((vm) => {
+      vm.returnRoute = returnRoute
+    })
+  },
   async asyncData({ store, params, app, redirect, route }) {
     if (!store.state.user.user) {
       return redirect(`/login?redirect=${route.path}`)
@@ -182,7 +195,8 @@ export default {
       episodeDownloadsQueued: [],
       showBookmarksModal: false,
       isDescriptionClamped: false,
-      showFullDescription: false
+      showFullDescription: false,
+      returnRoute: null
     }
   },
   computed: {
@@ -434,6 +448,10 @@ export default {
     }
   },
   methods: {
+    goBack() {
+      if (this.returnRoute) return this.$router.back()
+      return this.$router.push(`/library/${this.libraryId}`)
+    },
     selectBookmark(bookmark) {
       if (!bookmark) return
       if (this.isStreaming) {
