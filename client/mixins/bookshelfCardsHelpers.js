@@ -40,6 +40,8 @@ export default {
         sortingIgnorePrefix: !!this.sortingIgnorePrefix
       }
       if (this.entityName === 'items') {
+        const responsiveHeight = this.getResponsiveBookCardHeight?.()
+        if (responsiveHeight) props.height = responsiveHeight
         props.filterBy = this.filterBy
         props.orderBy = this.orderBy
       } else if (this.entityName === 'series') {
@@ -107,6 +109,8 @@ export default {
       }
 
       if (this.entityName === 'items') {
+        const responsiveHeight = this.getResponsiveBookCardHeight?.()
+        if (responsiveHeight) props.height = responsiveHeight
         props.filterBy = this.filterBy
         props.orderBy = this.orderBy
       } else if (this.entityName === 'series') {

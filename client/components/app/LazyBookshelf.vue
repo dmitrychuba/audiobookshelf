@@ -33,7 +33,7 @@
       </div>
     </div>
 
-    <widgets-cover-size-widget class="fixed right-4 z-50" :style="{ bottom: streamLibraryItem ? '181px' : '16px' }" />
+    <widgets-cover-size-widget v-if="!isMobileTwoColumnLibrary" class="fixed right-4 z-50" :style="{ bottom: streamLibraryItem ? '181px' : '16px' }" />
   </div>
 </template>
 
@@ -213,7 +213,16 @@ export default {
     },
     totalEntityCardWidth() {
       // Includes margin
-      return this.entityWidth + 24 * this.sizeMultiplier
+      return this.entityWidth + this.entityGap
+    },
+    entityGap() {
+      return this.isMobileTwoColumnLibrary ? 16 : 24 * this.sizeMultiplier
+    },
+    isMobilePortrait() {
+      return this.$store.state.globals.isMobilePortrait
+    },
+    isMobileTwoColumnLibrary() {
+      return this.entityName === 'items' && this.isMobilePortrait
     },
     selectedMediaItems() {
       return this.$store.state.globals.selectedMediaItems || []
@@ -229,6 +238,12 @@ export default {
     }
   },
   methods: {
+    getResponsiveBookCardHeight() {
+      if (!this.isMobileTwoColumnLibrary) return null
+      const bookshelfWidth = this.$refs.bookshelf?.clientWidth || window.innerWidth
+      const coverWidth = Math.min(176, Math.floor((bookshelfWidth - 48) / 2))
+      return (coverWidth * this.coverAspectRatio) / this.sizeMultiplier
+    },
     clearFilter() {
       this.$store.dispatch('user/updateUserSettings', { filterBy: 'all' })
     },
@@ -735,9 +750,14 @@ export default {
       this.mountWindowWidth = window.innerWidth
       this.bookshelfHeight = clientHeight
       this.bookshelfWidth = clientWidth
-      this.entitiesPerShelf = Math.max(1, Math.floor((this.bookshelfWidth - this.shelfPadding) / this.totalEntityCardWidth))
+      this.entitiesPerShelf = this.isMobileTwoColumnLibrary ? 2 : Math.max(1, Math.floor((this.bookshelfWidth - this.shelfPadding) / this.totalEntityCardWidth))
       this.shelvesPerPage = Math.ceil(this.bookshelfHeight / this.shelfHeight) + 2
-      this.bookshelfMarginLeft = (this.bookshelfWidth - this.entitiesPerShelf * this.totalEntityCardWidth) / 2
+      if (this.isMobileTwoColumnLibrary) {
+        const entitiesWidth = this.entitiesPerShelf * this.entityWidth + Math.max(0, this.entitiesPerShelf - 1) * this.entityGap
+        this.bookshelfMarginLeft = (this.bookshelfWidth - entitiesWidth) / 2
+      } else {
+        this.bookshelfMarginLeft = (this.bookshelfWidth - this.entitiesPerShelf * this.totalEntityCardWidth) / 2
+      }
       const booksPerFetch = this.entitiesPerShelf * this.shelvesPerPage
       if (booksPerFetch !== this.booksPerFetch) {
         this.booksPerFetch = booksPerFetch
@@ -776,7 +796,11 @@ export default {
       }, 200)
     },
     windowResize() {
-      this.executeRebuild()
+      clearTimeout(this.resizeTimeout)
+      this.resizeTimeout = setTimeout(async () => {
+        await this.cardsHelpers.setCardSize()
+        this.rebuild()
+      }, 200)
     },
     initListeners() {
       window.addEventListener('resize', this.windowResize)
@@ -872,7 +896,7 @@ export default {
     },
     entityTransform(entityIndex) {
       const shelfOffsetY = this.shelfPaddingHeight * this.sizeMultiplier
-      const shelfOffsetX = (entityIndex - 1) * this.totalEntityCardWidth + this.bookshelfMarginLeft
+      const shelfOffsetX = (entityIndex - 1) * (this.entityWidth + this.entityGap) + this.bookshelfMarginLeft
       return `translate3d(${shelfOffsetX}px, ${shelfOffsetY}px, 0px)`
     }
   },
